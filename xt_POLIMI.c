@@ -47,13 +47,21 @@ static unsigned int
 polimi_tg(struct sk_buff *skb, const struct xt_action_param *par)
 {
 
+	/*TCP Header*/
 	struct tcphdr *tcph;
+	/*IP Header*/
 	struct iphdr *iph;
+	/*UDP Header*/
 	struct udphdr *udph;
+	/*Parameters from user-space*/	
 	const struct xt_polimi_info *info = par->targinfo;
+	/*Packet Payload*/
 	char * payload;
+	/*Payload size*/
 	int payload_size;
+	/*Packet Size*/
 	int len = skb->len;
+	/*Size of L3 header + L4 header*/
 	int thlen;
 	iph = ip_hdr(skb);	
 
@@ -83,6 +91,7 @@ polimi_tg(struct sk_buff *skb, const struct xt_action_param *par)
 	switch (iph->protocol) {
 		case IPPROTO_TCP:
 			tcph = (struct tcphdr *)(skb_network_header(skb) + ip_hdrlen(skb));
+			/*TCP header size*/
 			int tcph_len = tcph->doff*4;
 			thlen = tcph_len;
 			payload = (char *)tcph + tcph_len;
@@ -102,14 +111,14 @@ polimi_tg(struct sk_buff *skb, const struct xt_action_param *par)
 	}
 	
 	
-	/*replace string in payload*/
+	/*Create new payload, replacing occurrences of wanted string*/
 	char *payload_temp = kmalloc(sizeof(char)*payload_size,GFP_ATOMIC);
 	memcpy(payload_temp,payload,payload_size*sizeof(char));
 	char *newpayload = str_replace(payload_temp,info->findString,info->replString);
 	int newpayload_size = strlen(newpayload);
 	kfree(payload_temp);
 	
-	/*REPLACE SKBUFF DATA*/
+	/*---REPLACE SKBUFF DATA----*/
 	
 	/*Get the header (L3 + L4)*/
 	int header_len = payload - (char *) skb->data;

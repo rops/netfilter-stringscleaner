@@ -1,0 +1,4 @@
+- Download iptables source
+- Copy xt_POLIMI.h in /usr/include/linux/netfilter/
+- Copy libxt_POLIMI.c in "iptables_dir"/extensions/
+- Compile and install iptables (./config, make, make install)

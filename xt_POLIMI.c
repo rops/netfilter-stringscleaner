@@ -18,6 +18,9 @@
 MODULE_DESCRIPTION("Xtables: Polimi Project");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("ipt_POLIMI");
+MODULE_AUTHOR("Daniele Rossetti");
+MODULE_AUTHOR("Antonio Verlotta");
+MODULE_AUTHOR("Marco Scoppetta");
 
 /*Replace all occurences of substr with replacement and return the new string*/
 char *str_replace ( const char *string, const char *substr, const char *replacement ){
@@ -61,107 +64,108 @@ polimi_tg(struct sk_buff *skb, const struct xt_action_param *par)
 	int payload_size;
 	/*Packet Size*/
 	int len = skb->len;
-	/*Size of L3 header + L4 header*/
-	int thlen;
-	iph = ip_hdr(skb);	
+	
 
 
-
-	/*IF NOTFOUND*/
+	/*IF STRING IS NOT FOUND, PACKET IS ACCEPTED*/
 	struct ts_state state;
 	memset(&state, 0, sizeof(struct ts_state));
 	
 	struct ts_config *conf = textsearch_prepare("bm", info->findString, info->find_len, GFP_ATOMIC, TS_AUTOLOAD);
 	
 	int pos = skb_find_text(skb,0, skb->len, conf, &state);
+	textsearch_destroy(conf);
 	if(pos==UINT_MAX){
-		printk("[POLIMI] String Not found");
+		printk("[POLIMI] String Not found \n");
 		return XT_CONTINUE;
 	}
-
+	printk("[POLIMI] String found \n");
 		
 	if(skb_linearize(skb)<0){
 		printk("[POLIMI] Not Linearizable \n");
 		return NF_DROP;	
 	}
 	
+	/*Get Ip Header*/
+	iph = ip_hdr(skb);	
 
 
-	/*get payload*/
+	/*Get payload*/
 	switch (iph->protocol) {
 		case IPPROTO_TCP:
 			tcph = (struct tcphdr *)(skb_network_header(skb) + ip_hdrlen(skb));
 			/*TCP header size*/
 			int tcph_len = tcph->doff*4;
-			thlen = tcph_len;
+			/*get tcp payload */ 
 			payload = (char *)tcph + tcph_len;
 			payload_size = ntohs(iph->tot_len)-ip_hdrlen(skb)-tcph_len;			
 		break;
 		
 		case IPPROTO_UDP:
-			/*get udp payload*/
 			udph = (struct udphdr *)(skb_network_header(skb) + ip_hdrlen(skb));
+			/*UDP header size*/
 			int udph_len = sizeof(struct udphdr);
-			thlen = udph_len;
+			/*get udp payload*/			
 			payload = (char *) udph + udph_len;
 			payload_size = ntohs(udph->len) - udph_len;
-			return XT_CONTINUE;/*UDP NOT YET SUPPORTED*/
 			
 		break;
 	}
 	
 	
-	/*Create new payload, replacing occurrences of wanted string*/
+	/*Create new payload, replacing all occurrences of wanted string*/
 	char *payload_temp = kmalloc(sizeof(char)*payload_size,GFP_ATOMIC);
 	memcpy(payload_temp,payload,payload_size*sizeof(char));
 	char *newpayload = str_replace(payload_temp,info->findString,info->replString);
 	int newpayload_size = strlen(newpayload);
 	kfree(payload_temp);
 	
-	/*---REPLACE SKBUFF DATA----*/
 	
-	/*Get the header (L3 + L4)*/
-	int header_len = payload - (char *) skb->data;
-	char *header = kmalloc(sizeof(char)*header_len,GFP_KERNEL);
-	memcpy(header,skb->data,header_len);
-	
-	/*Remove all data from skbuff*/
-	skb_pull(skb,skb->len);
-	/*Create new space in skbuff, with the right dimension*/
-	char *data = skb_push(skb,newpayload_size+header_len);
-	/*Copy the old header*/
-	memcpy(data,header,header_len);
+	/*Resize data space in buffer*/
+	if(newpayload_size<payload_size){
+		/*Make it smaller*/
+		skb_trim(skb,skb->len-payload_size+newpayload_size);
+
+	}else if(newpayload_size>payload_size){
+		int delta = newpayload_size - payload_size;
+		if (delta > skb_tailroom(skb)){
+			printk("[POLIMI] Socket Buffer too small");
+			return NF_DROP;
+		}
+		/*Make it bigger*/
+		skb_put(skb,delta);
+	}
 	/*Copy the new payload*/
-	memcpy(data+header_len,newpayload,newpayload_size);
-	
-	
+	memcpy(payload,newpayload,newpayload_size);
+		
 	/*fix ip tot length*/
-	iph=ip_hdr(skb);
-	iph->tot_len=htons(ip_hdrlen(skb)+thlen+newpayload_size);
+	iph->tot_len=htons(ntohs(iph->tot_len)-payload_size+newpayload_size);
 
-
-	
-	
-
-	/*fix tcp/udp checksum*/
+	/*fix checksum*/
 	switch (iph->protocol) {
 		case IPPROTO_TCP:
 			
 			tcph = (struct tcphdr *)(skb_network_header(skb) + ip_hdrlen(skb));
-			tcph->check = 0;		
+			tcph->check = 0;	
+			/*fix tcp checksum*/	
 			tcph->check = tcp_v4_check(skb->len - 4*iph->ihl,iph->saddr, iph->daddr,csum_partial((char *)tcph, skb->len-4*iph->ihl,0));			
 		break;
 		
 		case IPPROTO_UDP:
 			udph = (struct udphdr *)(skb_network_header(skb) + ip_hdrlen(skb));
+			int udplen = ntohs(udph->len)-payload_size+newpayload_size;
+			/*fix udp length*/
+			udph->len = htons(udplen);
+			/*fix udp checksum*/	
 			udph->check = 0;
-			/*udp checksum - NOT YET IMPLEMENTED*/
+			udph->check = csum_tcpudp_magic(iph->saddr,iph->daddr,udplen, IPPROTO_UDP,csum_partial((char *)udph, udplen, 0));
+			
 			
 		break;
 	}
-	/* IP Checksum - not necessary
+	/*IP Checksum*/
+	iph->check = htons(0);
 	iph->check = ip_fast_csum((unsigned char *) iph,iph->ihl);
-	*/
 	
 	return XT_CONTINUE;
 }

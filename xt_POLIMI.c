@@ -67,7 +67,7 @@ polimi_tg(struct sk_buff *skb, const struct xt_action_param *par)
 	
 
 
-	/*IF STRING IS NOT FOUND, PACKET IS ACCEPTED*/
+	/*If string is not found, packet is accepted*/
 	struct ts_state state;
 	memset(&state, 0, sizeof(struct ts_state));
 	

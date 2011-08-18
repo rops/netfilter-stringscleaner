@@ -1,8 +1,6 @@
 /* Shared library add-on to iptables to add POLIMI target support. 
 Ex. Usage:
 	iptables -t mangle -A INPUT -t POLIMI --findstring badstring --replacestring goodstring
-
-
 */
 
 #include <linux/netfilter/xt_POLIMI.h>
@@ -14,6 +12,10 @@ Ex. Usage:
 #include <ctype.h>
 #include <xtables.h>
 
+
+/*
+	Help Function ( --help)
+*/
 static void
 polimi_help(void)
 {
@@ -22,6 +24,9 @@ polimi_help(void)
 	       " --replaceString Replacing string\n"
 	       );
 }
+/*
+	Description of actions (iptables -L)
+*/
 static void polimi_print(const void *ip, const struct xt_entry_target *target,
                       int numeric)
 {
@@ -29,21 +34,23 @@ static void polimi_print(const void *ip, const struct xt_entry_target *target,
 		= (const struct xt_polimi_info *)target->data;
 	printf("\n POLIMI TARGET: Replace '%s' with '%s'",myinfo->findString,myinfo->replString);
 }
+/*
+	Parameters
+*/
 static const struct option polimi_opts[] = {
 	{.name = "findstring", .has_arg = true,  .val = 'f'},
 	{.name = "replacestring", .has_arg = true,  .val = 'r'},
 	XT_GETOPT_TABLEEND,
 };
-/*
-	Check number of parameters 
-	TODO: repeated parameters check
 
+/*	
+	Parameters Validation
 */
 static void polimi_check(unsigned int flags)
 {
-	if (flags<2)
+	if (flags!=3)
 		xtables_error(PARAMETER_PROBLEM,
-			   "You must specify both parameters");
+			   "You must specify both parameters and there can't be duplicates!");
 	
 }
 
@@ -74,7 +81,7 @@ static int polimi_parse(int c, char **argv, int invert, unsigned int *flags,
 			   "replacestring too long");
 		strcpy(myinfo->replString,optarg);
 		myinfo->repl_len=strlen(optarg);
-		*flags=*flags+1;
+		*flags=*flags+2;
 
 		break;
 	}

@@ -3,6 +3,7 @@
 #include <linux/types.h>
 #define POLIMI_TARGET_MAX_STRING_SIZE 32
 
+/*Parameters from user-space*/
 struct xt_polimi_info {
 	/*String to replace*/
 	char			findString[POLIMI_TARGET_MAX_STRING_SIZE];
